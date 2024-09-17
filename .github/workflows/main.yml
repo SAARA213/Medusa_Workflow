@@ -32,7 +32,8 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
           REPOSITORY: medusa-app
         run: |
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          # Build the Docker image from the Dockerfile located in the `docker` subdirectory
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
@@ -43,17 +44,15 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Pull the latest image from ECR
+            # Log in to Amazon ECR
             aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+            
+            # Pull the latest Docker image from ECR
             docker pull ${{ steps.build-image.outputs.image }}
             
-            # Stop and remove existing container
+            # Stop and remove existing container if it exists
             docker stop medusa-container || true
             docker rm medusa-container || true
             
-            # Run the new container
+            # Run the new Docker container
             docker run -d --name medusa-container -p 80:80 ${{ steps.build-image.outputs.image }}
-
-
-
-
