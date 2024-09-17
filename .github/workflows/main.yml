@@ -19,17 +19,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1  # Replace with your AWS region
 
-      - name: Install AWS CLI
-        run: sudo apt-get install awscli -y
-
-      - name: Upload files to S3
-        run: aws s3 sync ./ s3://your-bucket-name/ --exclude ".git/*"  # Replace with your bucket name
-
-      - name: Send SSM Command to Deploy
+      - name: Sync files to EC2
         run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "Key=instanceids,Values=i-0123456789abcdef0" \  # Replace with your EC2 instance ID
-            --parameters 'commands=["aws s3 sync s3://your-bucket-name/ /home/ec2-user/app", "cd /home/ec2-user/app", "npm install", "npm run start"]'
+          aws s3 cp --recursive ./ s3://your-bucket-name/ --exclude ".git/*"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@your-ec2-public-dns << 'EOF'
+            aws s3 sync s3://your-bucket-name/ /home/ec2-user/app
+            cd /home/ec2-user/app
+            npm install
+            npm run start
+          EOF
+
 
 
