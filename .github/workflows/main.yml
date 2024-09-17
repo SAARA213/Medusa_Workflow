@@ -20,22 +20,18 @@ jobs:
           aws-region: 'ap-south-1'
 
       - name: Login to Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-        with:
-          mask-password: 'true'
 
-      - name: Build, tag, and push image to Amazon ECR
-        id: build-image
+      - name: Build, tag, and push Docker image to ECR
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
           IMAGE_TAG: ${{ github.sha }}
           REPOSITORY: medusa-app
         run: |
-          # Build the Docker image from the Dockerfile located in the `docker` subdirectory
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
+          # Build the Docker image
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          # Push the Docker image to ECR
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
       - name: Deploy Docker image to EC2
         uses: appleboy/ssh-action@v0.1.4
@@ -45,14 +41,14 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             # Log in to Amazon ECR
-            aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+            aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
             
             # Pull the latest Docker image from ECR
-            docker pull ${{ steps.build-image.outputs.image }}
+            docker pull ${{ secrets.ECR_REGISTRY }}/medusa-app:${{ github.sha }}
             
             # Stop and remove existing container if it exists
             docker stop medusa-container || true
             docker rm medusa-container || true
             
             # Run the new Docker container
-            docker run -d --name medusa-container -p 80:80 ${{ steps.build-image.outputs.image }}
+            docker run -d --name medusa-container -p 80:80 ${{ secrets.ECR_REGISTRY }}/medusa-app:${{ github.sha }}
