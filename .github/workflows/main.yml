@@ -27,7 +27,7 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
-          REPOSITORY: nodejs-app
+          REPOSITORY: medusa
         run: |
           # Build a docker container and
           # push it to ECR so that it can
@@ -47,6 +47,6 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: node-service
+          service: medusa-service
           cluster: DevCluster2
           wait-for-service-stability: true    
