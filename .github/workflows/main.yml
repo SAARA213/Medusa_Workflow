@@ -1,4 +1,4 @@
-name: Deploy Medusa to EC2 via CodeDeploy
+name: Deploy Medusa to EC2
 
 on:
   push:
@@ -6,31 +6,38 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
+      - name: Checkout source code
         uses: actions/checkout@v3
 
-      - name: Set up AWS CLI
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-1  # Replace with your AWS region
 
-      - name: Build Docker image
-        run: |
-          docker build -t medusa-app .
+      - name: Install AWS CLI
+        run: sudo apt-get install awscli -y
 
-      - name: Push Docker image to ECR
+      - name: Sync files to EC2
         run: |
-          aws ecr create-repository --repository-name medusa-app || true
-          $(aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com)
-          docker tag medusa-app:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/medusa-app:latest
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/medusa-app:latest
+          aws s3 cp --recursive ./ s3://your-bucket-name/ --exclude ".git/*"
+          aws ec2-instance-connect send-ssh-public-key \
+            --region us-east-1 \
+            --instance-id i-0123456789abcdef0 \
+            --availability-zone us-east-1a \
+            --instance-os-user ec2-user \
+            --ssh-public-key file://~/.ssh/id_rsa.pub
+          ssh -i ~/.ssh/id_rsa ec2-user@your-ec2-public-dns 'aws s3 sync s3://your-bucket-name/ /home/ec2-user/app'
 
-      - name: Create CodeDeploy deployment
+      - name: Install dependencies and start Medusa
         run: |
-          aws deploy create-deployment --application-name your-application-name --deployment-group-name your-deployment-group-name --revision "revisionType=GitHub,githubLocation={repository=$GITHUB_REPOSITORY,branch=main,commitId=${GITHUB_SHA}}"
+          ssh -i ~/.ssh/id_rsa ec2-user@your-ec2-public-dns << 'EOF'
+            cd /home/ec2-user/app
+            npm install
+            npm run start
+          EOF
+
