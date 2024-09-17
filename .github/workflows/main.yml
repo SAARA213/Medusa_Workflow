@@ -1,33 +1,59 @@
-name: Deploy Medusa to EC2
+name: Deploy Medusa Application
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout source code
+      - name: Checkout source
         uses: actions/checkout@v3
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v3
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1  # Replace with your AWS region
+          aws-region: 'ap-south-1'
 
-      - name: Sync files to EC2
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          mask-password: 'true'
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          REPOSITORY: medusa-app
         run: |
-          aws s3 cp --recursive ./ s3://your-bucket-name/ --exclude ".git/*"
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@your-ec2-public-dns << 'EOF'
-            aws s3 sync s3://your-bucket-name/ /home/ec2-user/app
-            cd /home/ec2-user/app
-            npm install
-            npm run start
-          EOF
+          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Deploy Docker image to EC2
+        uses: appleboy/ssh-action@v0.1.4
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Pull the latest image from ECR
+            aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+            docker pull ${{ steps.build-image.outputs.image }}
+            
+            # Stop and remove existing container
+            docker stop medusa-container || true
+            docker rm medusa-container || true
+            
+            # Run the new container
+            docker run -d --name medusa-container -p 80:80 ${{ steps.build-image.outputs.image }}
+
 
 
 
