@@ -22,22 +22,14 @@ jobs:
       - name: Install AWS CLI
         run: sudo apt-get install awscli -y
 
-      - name: Sync files to EC2
-        run: |
-          aws s3 cp --recursive ./ s3://your-bucket-name/ --exclude ".git/*"
-          aws ec2-instance-connect send-ssh-public-key \
-            --region us-east-1 \
-            --instance-id i-0123456789abcdef0 \
-            --availability-zone us-east-1a \
-            --instance-os-user ec2-user \
-            --ssh-public-key file://~/.ssh/id_rsa.pub
-          ssh -i ~/.ssh/id_rsa ec2-user@your-ec2-public-dns 'aws s3 sync s3://your-bucket-name/ /home/ec2-user/app'
+      - name: Upload files to S3
+        run: aws s3 sync ./ s3://your-bucket-name/ --exclude ".git/*"  # Replace with your bucket name
 
-      - name: Install dependencies and start Medusa
+      - name: Send SSM Command to Deploy
         run: |
-          ssh -i ~/.ssh/id_rsa ec2-user@your-ec2-public-dns << 'EOF'
-            cd /home/ec2-user/app
-            npm install
-            npm run start
-          EOF
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=instanceids,Values=i-0123456789abcdef0" \  # Replace with your EC2 instance ID
+            --parameters 'commands=["aws s3 sync s3://your-bucket-name/ /home/ec2-user/app", "cd /home/ec2-user/app", "npm install", "npm run start"]'
+
 
