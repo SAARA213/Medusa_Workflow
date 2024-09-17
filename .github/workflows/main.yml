@@ -1,0 +1,44 @@
+name: Deploy Medusa to EC2
+
+on:
+  push:
+    branches:
+      - main  # Run the workflow on pushes to the main branch
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the code from the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up SSH key to connect to EC2
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+
+      # Step 3: Build Docker image (or you can directly build Medusa using npm/yarn if not using Docker)
+      - name: Build Docker image
+        run: |
+          docker build -t medusa-app .
+
+      # Step 4: SSH into EC2 and deploy
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -p ${{ secrets.EC2_PORT }} ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            # Pull the latest changes (if your repo is cloned on EC2)
+            cd /path/to/your-app
+            
+            # Stop any running containers
+            docker stop medusa-app || true
+            docker rm medusa-app || true
+            
+            # Start the new container
+            docker run -d --name medusa-app -p 80:9000 medusa-app
+            
+            # Optional: Check the logs to ensure it's running
+            docker logs medusa-app
+          EOF
