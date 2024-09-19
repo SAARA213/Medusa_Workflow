@@ -22,7 +22,7 @@ jobs:
 
       - name: Deploy to EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@35.154.168.61 '
+          '
          
           '
         
